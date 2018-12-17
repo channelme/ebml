@@ -78,7 +78,7 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data} = State) -
 tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data}=State) when size(Data) + size(Bin) >= Size ->
     <<ValueData:Size/binary, Rest/binary>> = <<Data/binary, Bin/binary>>,
     Value = value(Type, ValueData),
-    tokens(Rest, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined, data=undefined});
+    tokens(Rest, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined, data= <<>>});
 
 tokens(_Bin, _Acc, #state{in=ebml_value, data_size=Size, type=master}) when Size > 10240 ->
     %% TODO
@@ -87,12 +87,16 @@ tokens(_Bin, _Acc, #state{in=ebml_value, data_size=Size, type=master}) when Size
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
     {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
 
-value(master, _Bin) ->
-    todo;
+value(master, Bin) ->
+    {Tokens, #state{in=ebml_id, data= <<>>}} = tokens(Bin),
+    #value{type=master, value=Tokens};
 
+value(uinteger, Bin) ->
+    #value{type=uinteger, value=binary:decode_unsigned(Bin)};
+value(float, <<Float/float>>) ->
+    #value{type=float, value=Float};
 value(Type, Bin) ->
     #value{type=Type, value=Bin}.
-
 
 % @doc ...
 element_id(<<16#FF, _Rest/binary>>) -> {error, no_id};
@@ -418,6 +422,16 @@ simple_token_ebml_test() ->
                  tokens(<<26,69,223,163,1,0,0,0,0,0,0,31>>)),
 
     ok.
+
+token_test_webm_test() ->
+    {ok, Data} = file:read_file("test/data/test.webm"),
+
+    {Tokens, #state{}} = tokens(Data),
+
+    ?assertEqual(4, length(Tokens)),
+
+    ok.
+
 
 -endif.
 
