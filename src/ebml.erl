@@ -34,7 +34,6 @@
     type = undefined,
     data_size = undefined,
 
-
     data = <<>>
 }).
 
@@ -44,10 +43,12 @@ tokens(Bin) ->
 tokens(Bin, State) ->
     tokens(Bin, [], State). 
 
-tokens(Bin, Acc, #state{in=ebml_id, data = Data} = State) ->
+tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
     case element_id(<<Data/binary, Bin/binary>>) of
         {error,_}=Error ->
             Error;
+        continue ->
+            {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
         {Id, Rest} ->
             {ElementName, ElementType} = ebml_type(Id),
             State1 = State#state{in=ebml_data_size, id=ElementName, type=ElementType},
@@ -58,18 +59,37 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data} = State) -
     case element_data_size(<<Data/binary, Bin/binary>>) of
         {error,_}=Error ->
             Error;
+        continue ->
+            {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
         {DataSize, Rest} ->
             Token = #element{name=ElementName, data_size=DataSize},
-            State1 = State#state{in=ebml_value, data_size=DataSize},
-            tokens(Rest, [Token|Acc], State1)
+
+            State1 = case State#state.type of
+                master ->
+                    State#state{in=ebml_master, data_size=DataSize},
+                _ ->
+                    State#state{in=ebml_value, data_size=DataSize},
+            end,
+
+            tokens(Rest, [Token | Acc], State1)
     end;
 
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
-    value(State#state.type, State#state.data_size, <<Data/binary, Bin/binary>>, Acc).
+    case value(State#state.type, State#state.data_size, <<Data/binary, Bin/binary>>, Acc) of
+        {error, _}=Error ->
+            Error;
+        continue ->
+            {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
+        {Value, Rest} ->
+
+            tokens(Rest, [Value|Acc], 
+    end;
+
+tokens(Bin, Acc, #state{in=ebml_master, data=Data}=State) ->
+    
 
 value(master, Size, Bin, Acc) when Size =< size(Bin) ->
     %% we have all the data and can produce the tokens
-    
     <<Value:Size/binary, Rest/binary>> = Bin,
 
     Elements = tokens(Value, []),
@@ -84,17 +104,23 @@ value(Type, Size, Bin, Acc) when Size =< size(Bin) ->
     %%element(Rest, [V | Acc]);
     ok;
 
-value(Type, Size, Bin, Acc)  ->
-    % Not enough data
-    ok.
+value(_Type, _Size, _Bin, _Acc)  ->
+    continue.
 
-element_id(<<16#FF, _Rest/binary>>) -> error;
+
+% @doc ...
+element_id(<<16#FF, _Rest/binary>>) -> {error, no_id};
 element_id(<<1:1, N:7, Rest/binary>>) -> {N, Rest};
 element_id(<<1:2, N:14, Rest/binary>>) -> {N, Rest};
 element_id(<<1:3, N:21, Rest/binary>>) -> {N, Rest};
 element_id(<<1:4, N:28, Rest/binary>>) -> {N, Rest};
+element_id(<<>>) -> continue;
+element_id(<<1:2, _:6, Rest/binary>>) when size(Rest) =:= 0 -> continue;
+element_id(<<1:3, _:5, Rest/binary>>) when size(Rest) =< 1 -> continue;
+element_id(<<1:4, _:4, Rest/binary>>) when size(Rest) =< 2 -> continue;
 element_id(_) -> {error, no_element_id}.
 
+% @doc ...
 element_data_size(<<16#FF, Rest/binary>>) -> {reserved, Rest};
 element_data_size(<<1:1, N:7, Rest/binary>>) -> {N, Rest};
 element_data_size(<<1:2, N:14, Rest/binary >>) -> {N, Rest};
@@ -104,9 +130,17 @@ element_data_size(<<1:5, N:35, Rest/binary>>) -> {N, Rest};
 element_data_size(<<1:6, N:42, Rest/binary>>) -> {N, Rest};
 element_data_size(<<1:7, N:49, Rest/binary>>) -> {N, Rest};
 element_data_size(<<1:8, N:56, Rest/binary>>) -> {N, Rest};
+element_data_size(<<>>) -> continue;
+element_data_size(<<1:2, _:6, Rest/binary>>) when size(Rest) =:= 0 -> continue;
+element_data_size(<<1:3, _:5, Rest/binary>>) when size(Rest) =< 1 -> continue;
+element_data_size(<<1:4, _:4, Rest/binary>>) when size(Rest) =< 2 -> continue;
+element_data_size(<<1:5, _:3, Rest/binary>>) when size(Rest) =< 3 -> continue; 
+element_data_size(<<1:6, _:2, Rest/binary>>) when size(Rest) =< 4 -> continue;
+element_data_size(<<1:7, _:1, Rest/binary>>) when size(Rest) =< 5 -> continue;
+element_data_size(<<1:8, Rest/binary>>) when size(Rest) =< 6 -> continue;
 element_data_size(_) -> {error, no_data_size}.
 
-
+% @doc ...
 ebml_type(16#A45DFA3) -> {'EBML', master};
 ebml_type(16#286) -> {'EBMLVersion', uinteger};
 ebml_type(16#2F7) -> {'EBMLReadVersion', uinteger};
@@ -342,4 +376,63 @@ ebml_type(16#485) -> {'TagBinary', 'binary'};
 ebml_type(Id) -> {Id, unknown}.
 
 
+%%
+%% Tests
+%%
+
+-ifndef(test).
+
+-include_lib("eunit/include/eunit.hrl").
+
+element_id_test() ->
+    ?assertEqual(continue, element_id(<<>>)),
+    ?assertEqual(continue, element_id(<<26>>)),
+    ?assertEqual(continue, element_id(<<26, 69>>)),
+    ?assertEqual(continue, element_id(<<26, 69, 223>>)),
+    ?assertEqual({172351395, <<>>}, element_id(<<26,69,223,163>>)),
+    ok.
+
+simple_token_ebml_test() ->
+    ?assertMatch({[], #state{in=ebml_id, data= <<>>}}, tokens(<<>>)),
+    ?assertMatch({[], #state{in=ebml_id, data= <<26>>}}, tokens(<<26>>)),
+    ?assertMatch({[], #state{in=ebml_id, data= <<26, 69>>}}, tokens(<<26, 69>>)),
+    ?assertMatch({[], #state{in=ebml_id, data= <<26, 69, 223>>}}, tokens(<<26, 69, 223>>)),
+    ?assertMatch({[], #state{in=ebml_data_size,
+                             id='EBML',
+                             type=master,
+                             data= <<>>}}, tokens(<<26, 69, 223, 163>>)),
+
+    ?assertMatch({[], #state{in=ebml_data_size,
+                             id='EBML',
+                             type=master,
+                             data= <<>>}}, tokens(<<26, 69, 223, 163>>)),
+
+    ?assertMatch({[], #state{in=ebml_data_size,
+                             id='EBML',
+                             type=master,
+                             data= <<1>>}},
+                 tokens(<<26,69,223,163,1>>)),
+
+    ?assertMatch({[], #state{in=ebml_data_size,
+                             id='EBML',
+                             type=master,
+                             data= <<1, 0>>}},
+                 tokens(<<26,69,223,163,1,0>>)),
+
+    ?assertMatch({[], #state{in=ebml_data_size,
+                             id='EBML',
+                             type=master,
+                             data= <<1,0,0>>}},
+                 tokens(<<26,69,223,163,1,0,0>>)),
+
+    ?assertMatch({[], #state{in=ebml_value,
+                             id='EBML',
+                             type=master,
+                             data_size=31,
+                             data= <<>>}},
+                 tokens(<<26,69,223,163,1,0,0,0,0,0,0,31>>)),
+
+    ok.
+
+-endif.
 
