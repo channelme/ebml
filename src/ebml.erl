@@ -22,10 +22,19 @@
 
 -record(value, {
     type,
+
     value 
 }).
 
 -record(state, {
+    in = ebml_id, % ebml_type, ebml_data_size, ebml_value
+
+    %% Token in opbouw.
+    id = undefined,
+    type = undefined,
+    data_size = undefined,
+
+
     data = <<>>
 }).
 
@@ -35,35 +44,45 @@ tokens(Bin) ->
 tokens(Bin, State) ->
     tokens(Bin, [], State). 
 
-tokens(Bin, Acc, State) ->
-    element(Bin, Acc).
-
-element(Bin, Acc) ->
-    case element_id(Bin) of
+tokens(Bin, Acc, #state{in=ebml_id, data = Data} = State) ->
+    case element_id(<<Data/binary, Bin/binary>>) of
         {error,_}=Error ->
             Error;
         {Id, Rest} ->
             {ElementName, ElementType} = ebml_type(Id),
-            case element_data_size(Rest) of
-                {error,_}=Error ->
-                    Error;
-                {DataSize, Rest1} ->
-                    Token = #element{name=ElementName, data_size=DataSize},
-                    value(ElementType, DataSize, Rest1, [Token|Acc])
-            end
-    end.
+            State1 = State#state{in=ebml_data_size, id=ElementName, type=ElementType},
+            tokens(Rest, Acc, State1)
+    end;
+
+tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data} = State) ->
+    case element_data_size(<<Data/binary, Bin/binary>>) of
+        {error,_}=Error ->
+            Error;
+        {DataSize, Rest} ->
+            Token = #element{name=ElementName, data_size=DataSize},
+            State1 = State#state{in=ebml_value, data_size=DataSize},
+            tokens(Rest, [Token|Acc], State1)
+    end;
+
+tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
+    value(State#state.type, State#state.data_size, <<Data/binary, Bin/binary>>, Acc).
 
 value(master, Size, Bin, Acc) when Size =< size(Bin) ->
-    %% we have the data...
+    %% we have all the data and can produce the tokens
+    
     <<Value:Size/binary, Rest/binary>> = Bin,
-    Elements = element(Value, []),
+
+    Elements = tokens(Value, []),
     V = #value{type=master, value=Elements},
-    element(Rest, [Value | Acc]);
+
+    %element(Rest, [Value | Acc]);
+    ok;
 
 value(Type, Size, Bin, Acc) when Size =< size(Bin) ->
     <<Value:Size/binary, Rest/binary>> = Bin,
     V = #value{type=Type, value=Value},
-    element(Rest, [V | Acc]);
+    %%element(Rest, [V | Acc]);
+    ok;
 
 value(Type, Size, Bin, Acc)  ->
     % Not enough data

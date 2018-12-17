@@ -7,5 +7,5 @@
 -include_lib("eunit/include/eunit.hrl").
 
 tokens_test() ->
-    ebml:tokens(<<>>),
+    ?assertMatch({[], _}, ebml:tokens(<<>>)),
     ok.
