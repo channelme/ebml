@@ -16,13 +16,12 @@
 -compile({no_auto_import,[element/2]}).
 
 -record(element, {
-    name,     % id, or name of element 
-    data_size % size of the element
+          name :: atom(),     % name of element 
+          data_size :: non_neg_integer() % size of the element
 }).
 
 -record(value, {
     type,
-
     value 
 }).
 
@@ -37,6 +36,13 @@
     data = <<>>
 }).
 
+-define(IS_SIMPLE(T), ((T =:= utf8) 
+                       orelse (T =:= uinteger) 
+                       orelse (T =:= integer)
+                       orelse (T =:= float)
+                       orelse (T =:= string)
+                       orelse (T =:= binary))).
+
 tokens(Bin) ->
     tokens(Bin, #state{}).
 
@@ -50,7 +56,9 @@ tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
         continue ->
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
         {Id, Rest} ->
+
             {ElementName, ElementType} = ebml_type(Id),
+
             State1 = State#state{in=ebml_data_size, id=ElementName, type=ElementType},
             tokens(Rest, Acc, State1)
     end;
@@ -63,49 +71,27 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data} = State) -
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
         {DataSize, Rest} ->
             Token = #element{name=ElementName, data_size=DataSize},
-
-            State1 = case State#state.type of
-                master ->
-                    State#state{in=ebml_master, data_size=DataSize},
-                _ ->
-                    State#state{in=ebml_value, data_size=DataSize},
-            end,
-
+            State1 = State#state{in=ebml_value, data_size=DataSize},
             tokens(Rest, [Token | Acc], State1)
     end;
 
+tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data}=State) when size(Data) + size(Bin) >= Size ->
+    <<ValueData:Size/binary, Rest/binary>> = <<Data/binary, Bin/binary>>,
+    Value = value(Type, ValueData),
+    tokens(Rest, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined, data=undefined});
+
+tokens(_Bin, _Acc, #state{in=ebml_value, data_size=Size, type=master}) when Size > 10240 ->
+    %% TODO
+    too_large;
+
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
-    case value(State#state.type, State#state.data_size, <<Data/binary, Bin/binary>>, Acc) of
-        {error, _}=Error ->
-            Error;
-        continue ->
-            {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
-        {Value, Rest} ->
+    {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
 
-            tokens(Rest, [Value|Acc], 
-    end;
+value(master, _Bin) ->
+    todo;
 
-tokens(Bin, Acc, #state{in=ebml_master, data=Data}=State) ->
-    
-
-value(master, Size, Bin, Acc) when Size =< size(Bin) ->
-    %% we have all the data and can produce the tokens
-    <<Value:Size/binary, Rest/binary>> = Bin,
-
-    Elements = tokens(Value, []),
-    V = #value{type=master, value=Elements},
-
-    %element(Rest, [Value | Acc]);
-    ok;
-
-value(Type, Size, Bin, Acc) when Size =< size(Bin) ->
-    <<Value:Size/binary, Rest/binary>> = Bin,
-    V = #value{type=Type, value=Value},
-    %%element(Rest, [V | Acc]);
-    ok;
-
-value(_Type, _Size, _Bin, _Acc)  ->
-    continue.
+value(Type, Bin) ->
+    #value{type=Type, value=Bin}.
 
 
 % @doc ...
@@ -140,7 +126,7 @@ element_data_size(<<1:7, _:1, Rest/binary>>) when size(Rest) =< 5 -> continue;
 element_data_size(<<1:8, Rest/binary>>) when size(Rest) =< 6 -> continue;
 element_data_size(_) -> {error, no_data_size}.
 
-% @doc ...
+% @doc Basic ebml types.
 ebml_type(16#A45DFA3) -> {'EBML', master};
 ebml_type(16#286) -> {'EBMLVersion', uinteger};
 ebml_type(16#2F7) -> {'EBMLReadVersion', uinteger};
@@ -155,7 +141,7 @@ ebml_type(16#284) -> {'DocTypeExtensionVersion', uinteger};
 ebml_type(16#3F) -> {'CRC-32', binary};
 ebml_type(16#6C) -> {'Void', binary};
 
-%% webm ids stuff
+%% Webm ids stuff
 ebml_type(16#8538067) -> {'Segment', master};
 ebml_type(16#B538667) -> {'SignatureSlot', master};
 ebml_type(16#3E8A) -> {'SignatureAlgo', uinteger};
@@ -372,7 +358,6 @@ ebml_type(16#484) -> {'TagDefault', 'uinteger'};
 ebml_type(16#487) -> {'TagString', 'utf-8'};
 ebml_type(16#485) -> {'TagBinary', 'binary'};
 
-
 ebml_type(Id) -> {Id, unknown}.
 
 
@@ -425,7 +410,7 @@ simple_token_ebml_test() ->
                              data= <<1,0,0>>}},
                  tokens(<<26,69,223,163,1,0,0>>)),
 
-    ?assertMatch({[], #state{in=ebml_value,
+    ?assertMatch({[#element{name='EBML', data_size=31}], #state{in=ebml_value,
                              id='EBML',
                              type=master,
                              data_size=31,
