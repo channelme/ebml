@@ -1,0 +1,9 @@
+{application, ebml,
+ [
+  {description, "Continuation based EBML parser."},
+  {vsn, "git"},
+  {modules, [ebml]},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {env, []}
+ ]}.
