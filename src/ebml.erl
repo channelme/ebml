@@ -110,8 +110,6 @@ value(uinteger, Bin) ->
     #value{type=uinteger, value=binary:decode_unsigned(Bin)};
 value(float, <<Float/float>>) ->
     #value{type=float, value=Float};
-value(binary, _Bin) ->
-    #value{type=binary, value=skipped};
 value(Type, Bin) ->
     #value{type=Type, value=Bin}.
 
