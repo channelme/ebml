@@ -4,7 +4,12 @@
 
 -module(ebml).
 
--export([tokens/1]).
+-export([
+    tokens/1, tokens/2,
+        
+    data/1
+        
+]).
 
 %% "EBML" uses a system of "Elements" to compose an "EBML Document".
 %% "EBML Elements" incorporate three parts: an "Element ID", an "Element
@@ -43,11 +48,20 @@
                        orelse (T =:= string)
                        orelse (T =:= binary))).
 
+-define(MAX_LENGTH, 16#FFFFFFFFFFFFFF).
+
 tokens(Bin) ->
     tokens(Bin, #state{}).
 
 tokens(Bin, State) ->
     tokens(Bin, [], State). 
+
+data(#state{data=Data}=State) ->
+    {Data, State#state{data = <<>>}}.
+
+%%
+%% Helpers
+%%
 
 tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
     case element_id(<<Data/binary, Bin/binary>>) of
@@ -76,13 +90,14 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data} = State) -
     end;
 
 tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data}=State) when size(Data) + size(Bin) >= Size ->
+    %% We have the data
     <<ValueData:Size/binary, Rest/binary>> = <<Data/binary, Bin/binary>>,
     Value = value(Type, ValueData),
     tokens(Rest, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined, data= <<>>});
 
-tokens(_Bin, _Acc, #state{in=ebml_value, data_size=Size, type=master}) when Size > 10240 ->
-    %% TODO
-    too_large;
+tokens(Bin, Acc, #state{in=ebml_value, type=master, data_size=Size}=State) when Size >=  ?MAX_LENGTH ->
+    %% We are streaming, go to ebml_id mode... 
+    tokens(Bin, Acc, State#state{in=ebml_id, type=undefined, data_size=undefined});
 
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
     {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
@@ -95,6 +110,8 @@ value(uinteger, Bin) ->
     #value{type=uinteger, value=binary:decode_unsigned(Bin)};
 value(float, <<Float/float>>) ->
     #value{type=float, value=Float};
+value(binary, _Bin) ->
+    #value{type=binary, value=skipped};
 value(Type, Bin) ->
     #value{type=Type, value=Bin}.
 
