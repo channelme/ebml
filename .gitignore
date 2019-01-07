@@ -2,6 +2,7 @@ tags
 rebar3
 .eunit
 deps
+ebin
 *.o
 *.beam
 *.plt
