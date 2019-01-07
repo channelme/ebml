@@ -21,13 +21,15 @@
 -compile({no_auto_import,[element/2]}).
 
 -record(element, {
-          name :: atom(),     % name of element 
-          data_size :: non_neg_integer() % size of the element
+    name = undefined :: atom(),     % name of element 
+    data_size = 0    :: non_neg_integer(), % size of the element
+    offset = 0       :: non_neg_integer() % offset
 }).
 
 -record(value, {
-    type,
-    value 
+   type = undefined :: atom(), % atom 
+   value = <<>>     :: binary(), % data 
+   offset = 0       :: non_neg_integer() % offset
 }).
 
 -record(state, {
@@ -38,6 +40,8 @@
     type = undefined,
     data_size = undefined,
 
+    %% Current 
+    offset = 0,
     data = <<>>
 }).
 
@@ -65,37 +69,43 @@ data(#state{data=Data}=State) ->
 
 tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
     case element_id(<<Data/binary, Bin/binary>>) of
-        {error,_}=Error ->
+        {error, _}=Error ->
             Error;
         continue ->
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
-        {Id, Rest} ->
-
+        {Id, Size, Rest} ->
             {ElementName, ElementType} = ebml_type(Id),
-
-            State1 = State#state{in=ebml_data_size, id=ElementName, type=ElementType},
+            State1 = State#state{
+                       in=ebml_data_size,
+                       id=ElementName,
+                       type=ElementType,
+                       data_size=Size},
             tokens(Rest, Acc, State1)
     end;
 
-tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data} = State) ->
+tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data, data_size=IdSize, offset=Offset} = State) ->
     case element_data_size(<<Data/binary, Bin/binary>>) of
-        {error,_}=Error ->
+        {error, _}=Error ->
             Error;
         continue ->
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
-        {DataSize, Rest} ->
-            Token = #element{name=ElementName, data_size=DataSize},
-            State1 = State#state{in=ebml_value, data_size=DataSize},
+        {DataSize, Size, Rest} ->
+            Token = #element{name=ElementName, data_size=DataSize, offset=Offset},
+            State1 = State#state{
+                       in=ebml_value,
+                       data_size=DataSize,
+                       offset=Offset+IdSize+Size},
             tokens(Rest, [Token | Acc], State1)
     end;
 
-tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data}=State) when size(Data) + size(Bin) >= Size ->
+tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data, offset=Offset}=State) when size(Data) + size(Bin) >= Size ->
     %% We have the data
     <<ValueData:Size/binary, Rest/binary>> = <<Data/binary, Bin/binary>>,
     Value = value(Type, ValueData),
-    tokens(Rest, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined, data= <<>>});
+    tokens(Rest, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined,
+                                          offset=Offset+Size, data= <<>>});
 
-tokens(Bin, Acc, #state{in=ebml_value, type=master, data_size=Size}=State) when Size >=  ?MAX_LENGTH ->
+tokens(Bin, Acc, #state{in=ebml_value, type=master, data_size=Size}=State) when Size >= ?MAX_LENGTH ->
     %% We are streaming, go to ebml_id mode... 
     tokens(Bin, Acc, State#state{in=ebml_id, type=undefined, data_size=undefined});
 
@@ -115,10 +125,10 @@ value(Type, Bin) ->
 
 % @doc ...
 element_id(<<16#FF, _Rest/binary>>) -> {error, no_id};
-element_id(<<1:1, N:7, Rest/binary>>) -> {N, Rest};
-element_id(<<1:2, N:14, Rest/binary>>) -> {N, Rest};
-element_id(<<1:3, N:21, Rest/binary>>) -> {N, Rest};
-element_id(<<1:4, N:28, Rest/binary>>) -> {N, Rest};
+element_id(<<1:1, N:7, Rest/binary>>) -> {N, 1, Rest};
+element_id(<<1:2, N:14, Rest/binary>>) -> {N, 2, Rest};
+element_id(<<1:3, N:21, Rest/binary>>) -> {N, 3, Rest};
+element_id(<<1:4, N:28, Rest/binary>>) -> {N, 4, Rest};
 element_id(<<>>) -> continue;
 element_id(<<1:2, _:6, Rest/binary>>) when size(Rest) =:= 0 -> continue;
 element_id(<<1:3, _:5, Rest/binary>>) when size(Rest) =< 1 -> continue;
@@ -127,14 +137,14 @@ element_id(_) -> {error, no_element_id}.
 
 % @doc ...
 element_data_size(<<16#FF, Rest/binary>>) -> {reserved, Rest};
-element_data_size(<<1:1, N:7, Rest/binary>>) -> {N, Rest};
-element_data_size(<<1:2, N:14, Rest/binary >>) -> {N, Rest};
-element_data_size(<<1:3, N:21, Rest/binary>>) -> {N, Rest};
-element_data_size(<<1:4, N:28, Rest/binary>>) -> {N, Rest};
-element_data_size(<<1:5, N:35, Rest/binary>>) -> {N, Rest};
-element_data_size(<<1:6, N:42, Rest/binary>>) -> {N, Rest};
-element_data_size(<<1:7, N:49, Rest/binary>>) -> {N, Rest};
-element_data_size(<<1:8, N:56, Rest/binary>>) -> {N, Rest};
+element_data_size(<<1:1, N:7, Rest/binary>>) -> {N, 1, Rest};
+element_data_size(<<1:2, N:14, Rest/binary >>) -> {N, 2, Rest};
+element_data_size(<<1:3, N:21, Rest/binary>>) -> {N, 3, Rest};
+element_data_size(<<1:4, N:28, Rest/binary>>) -> {N, 4, Rest};
+element_data_size(<<1:5, N:35, Rest/binary>>) -> {N, 5, Rest};
+element_data_size(<<1:6, N:42, Rest/binary>>) -> {N, 6, Rest};
+element_data_size(<<1:7, N:49, Rest/binary>>) -> {N, 7, Rest};
+element_data_size(<<1:8, N:56, Rest/binary>>) -> {N, 8, Rest};
 element_data_size(<<>>) -> continue;
 element_data_size(<<1:2, _:6, Rest/binary>>) when size(Rest) =:= 0 -> continue;
 element_data_size(<<1:3, _:5, Rest/binary>>) when size(Rest) =< 1 -> continue;
@@ -393,7 +403,7 @@ element_id_test() ->
     ?assertEqual(continue, element_id(<<26>>)),
     ?assertEqual(continue, element_id(<<26, 69>>)),
     ?assertEqual(continue, element_id(<<26, 69, 223>>)),
-    ?assertEqual({172351395, <<>>}, element_id(<<26,69,223,163>>)),
+    ?assertEqual({172351395, 4, <<>>}, element_id(<<26,69,223,163>>)),
     ok.
 
 simple_token_ebml_test() ->
@@ -442,7 +452,6 @@ token_test_webm_test() ->
     {ok, Data} = file:read_file("test/data/test.webm"),
 
     {Tokens, #state{}} = tokens(Data),
-
     ?assertEqual(4, length(Tokens)),
 
     ok.
