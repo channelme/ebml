@@ -67,6 +67,9 @@ data(#state{data=Data}=State) ->
 %% Helpers
 %%
 
+tokens(<<>>, Acc, State) ->
+    {lists:reverse(Acc), State};
+
 tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
     case element_id(<<Data/binary, Bin/binary>>) of
         {error, _}=Error ->
@@ -79,6 +82,7 @@ tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
                        in=ebml_data_size,
                        id=ElementName,
                        type=ElementType,
+                       data= <<>>,
                        data_size=Size},
             tokens(Rest, Acc, State1)
     end;
@@ -93,28 +97,37 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data, data_size=
             Token = #element{name=ElementName, data_size=DataSize, offset=Offset},
             State1 = State#state{
                        in=ebml_value,
+                       data= <<>>,
                        data_size=DataSize,
                        offset=Offset+IdSize+Size},
             tokens(Rest, [Token | Acc], State1)
     end;
 
+tokens(Bin, Acc, #state{in=ebml_value, type=master}=State) ->
+    % We are streaming, got to ebml_id mode... tokenizing the next level..
+    Value = #value{type=master, value=[]},
+    tokens(Bin, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined});
+
 tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data, offset=Offset}=State) when size(Data) + size(Bin) >= Size ->
     %% We have the data
     <<ValueData:Size/binary, Rest/binary>> = <<Data/binary, Bin/binary>>,
     Value = value(Type, ValueData),
-    tokens(Rest, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined,
-                                          offset=Offset+Size, data= <<>>});
+    tokens(Rest, [Value|Acc], State#state{in=ebml_id,
+                                          type=undefined,
+                                          data_size=undefined,
+                                          data= <<>>,
+                                          offset=Offset+Size});
 
-tokens(Bin, Acc, #state{in=ebml_value, type=master, data_size=Size}=State) when Size >= ?MAX_LENGTH ->
-    %% We are streaming, go to ebml_id mode... 
-    tokens(Bin, Acc, State#state{in=ebml_id, type=undefined, data_size=undefined});
+%tokens(Bin, Acc, #state{in=ebml_value, type=master, data_size=Size}=State) when Size >= ?MAX_LENGTH ->
+%    %% We are streaming, go to ebml_id mode... 
+%    tokens(Bin, Acc, State#state{in=ebml_id, type=undefined, data_size=undefined});
 
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
     {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
 
-value(master, Bin) ->
-    {Tokens, #state{in=ebml_id, data= <<>>}} = tokens(Bin),
-    #value{type=master, value=Tokens};
+%value(master, Bin) ->
+%    {Tokens, #state{in=ebml_id, data= <<>>}} = tokens(Bin),
+%    #value{type=master, value=Tokens};
 
 value(uinteger, Bin) ->
     #value{type=uinteger, value=binary:decode_unsigned(Bin)};
@@ -452,7 +465,7 @@ token_test_webm_test() ->
     {ok, Data} = file:read_file("test/data/test.webm"),
 
     {Tokens, #state{}} = tokens(Data),
-    ?assertEqual(4, length(Tokens)),
+    ?assertEqual(1212, length(Tokens)),
 
     ok.
 
