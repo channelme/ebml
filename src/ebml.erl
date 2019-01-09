@@ -5,10 +5,13 @@
 -module(ebml).
 
 -export([
+    new/0,
     tokens/1, tokens/2,
-        
-    data/1
-        
+
+    get_data/1,
+
+    data/1,
+    offset/1
 ]).
 
 %% "EBML" uses a system of "Elements" to compose an "EBML Document".
@@ -45,23 +48,25 @@
     data = <<>>
 }).
 
--define(IS_SIMPLE(T), ((T =:= utf8) 
-                       orelse (T =:= uinteger) 
-                       orelse (T =:= integer)
-                       orelse (T =:= float)
-                       orelse (T =:= string)
-                       orelse (T =:= binary))).
-
 -define(MAX_LENGTH, 16#FFFFFFFFFFFFFF).
 
+new() ->
+    #state{}.
+
 tokens(Bin) ->
-    tokens(Bin, #state{}).
+    tokens(Bin, new()).
 
 tokens(Bin, State) ->
     tokens(Bin, [], State). 
 
-data(#state{data=Data}=State) ->
-    {Data, State#state{data = <<>>}}.
+data(#state{data=Data}) ->
+    Data.
+
+get_data(#state{data=Data}=State) ->
+    {Data, State#state{data= <<>>, offset=0}}.
+
+offset(#state{offset=Offset}) ->
+    Offset.
 
 %%
 %% Helpers
@@ -118,16 +123,8 @@ tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data, off
                                           data= <<>>,
                                           offset=Offset+Size});
 
-%tokens(Bin, Acc, #state{in=ebml_value, type=master, data_size=Size}=State) when Size >= ?MAX_LENGTH ->
-%    %% We are streaming, go to ebml_id mode... 
-%    tokens(Bin, Acc, State#state{in=ebml_id, type=undefined, data_size=undefined});
-
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
     {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
-
-%value(master, Bin) ->
-%    {Tokens, #state{in=ebml_id, data= <<>>}} = tokens(Bin),
-%    #value{type=master, value=Tokens};
 
 value(uinteger, Bin) ->
     #value{type=uinteger, value=binary:decode_unsigned(Bin)};
