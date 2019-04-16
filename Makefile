@@ -1,4 +1,4 @@
-PROJECT = ebml 
+PROJECT = ebml
 DIALYZER = dialyzer
 
 REBAR := $(shell which rebar3 2>/dev/null || echo ./rebar3)
