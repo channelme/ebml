@@ -7,7 +7,6 @@
 -module(ebml).
 -author("MM Zeeman <maas@channel.me>").
 
-
 -export([
     new/0,
     tokens/1, tokens/2,
@@ -28,15 +27,15 @@
 -compile({no_auto_import,[element/2]}).
 
 -record(element, {
-    name = undefined :: atom(),     % name of element 
+    name = undefined :: atom(),            % name of element 
     data_size = 0    :: non_neg_integer(), % size of the element
-    offset = 0       :: non_neg_integer() % offset
+    offset = 0       :: non_neg_integer()  % offset
 }).
 
 -record(value, {
-   type = undefined :: atom(), % atom 
-   value = <<>>     :: binary(), % data 
-   offset = 0       :: non_neg_integer() % offset
+   type = undefined :: value_type(),                  % atom 
+   value = <<>>     :: binary() | number() | list(),  % data 
+   offset = 0       :: non_neg_integer()              % offset
 }).
 
 -record(state, {
@@ -54,21 +53,52 @@
 
 -define(MAX_LENGTH, 16#FFFFFFFFFFFFFF).
 
+-opaque parser_state() :: #state{}.
+-type token() :: #element{} | #value{}.
+-type value_type() :: master
+                    | binary
+                    | integer
+                    | uinteger
+                    | float
+                    | date
+                    | string
+                    | 'utf-8'
+                    | unknown.
+
+
+-export_type([
+    parser_state/0,
+    token/0
+]).
+
+% @doc Return a fresh ebml parser state.
+-spec new() -> parser_state().
 new() ->
     #state{}.
 
+% @doc  
+-spec tokens(binary()) -> {list(token()), parser_state()}.
 tokens(Bin) ->
     tokens(Bin, new()).
 
+% @doc Tokenize the binary. Returns
+-spec tokens(binary(), parser_state()) -> {list(token()), parser_state()}.
 tokens(Bin, State) ->
     tokens(Bin, [], State). 
 
+% @doc Get the current leftover data from the parser state without removing. 
+-spec data(parser_state()) -> binary().
 data(#state{data=Data}) ->
     Data.
 
+% @doc Get the current leftover data from the parser state, and remove it
+% from the parser state. Returs the binary data, and the altered parser state. 
+-spec get_data(parser_state()) -> {binary(), parser_state()}.
 get_data(#state{data=Data}=State) ->
     {Data, State#state{data= <<>>, offset=0}}.
 
+% @doc Get the current parser offset.
+-spec offset(parser_state()) -> non_neg_integer().
 offset(#state{offset=Offset}) ->
     Offset.
 
@@ -459,14 +489,6 @@ simple_token_ebml_test() ->
                              data_size=31,
                              data= <<>>}},
                  tokens(<<26,69,223,163,1,0,0,0,0,0,0,31>>)),
-
-    ok.
-
-token_test_webm_test() ->
-    {ok, Data} = file:read_file("test/data/test.webm"),
-
-    {Tokens, #state{}} = tokens(Data),
-    ?assertEqual(1212, length(Tokens)),
 
     ok.
 
