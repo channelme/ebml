@@ -1,8 +1,12 @@
+%% Copyright (C) Channel.Me B.V. - All Rights Reserved
+%% Unauthorized copying of this file, via any medium is strictly prohibited
+%% Proprietary and confidential
 %%
-%%
-%%
+%% Written by MM Zeeman <maas@channel.me>
 
 -module(ebml).
+-author("MM Zeeman <maas@channel.me>").
+
 
 -export([
     new/0,
