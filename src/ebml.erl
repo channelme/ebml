@@ -41,7 +41,7 @@
 -record(state, {
     in = ebml_id, % ebml_type, ebml_data_size, ebml_value
 
-    %% Token in opbouw.
+    %% Token being build.
     id = undefined,
     type = undefined,
     data_size = undefined,
@@ -167,7 +167,7 @@ value(float, <<Float/float>>) ->
 value(Type, Bin) ->
     #value{type=Type, value=Bin}.
 
-% @doc ...
+% @doc Recognize an element id.
 element_id(<<16#FF, _Rest/binary>>) -> {error, no_id};
 element_id(<<1:1, N:7, Rest/binary>>) -> {N, 1, Rest};
 element_id(<<1:2, N:14, Rest/binary>>) -> {N, 2, Rest};
@@ -179,7 +179,7 @@ element_id(<<1:3, _:5, Rest/binary>>) when size(Rest) =< 1 -> continue;
 element_id(<<1:4, _:4, Rest/binary>>) when size(Rest) =< 2 -> continue;
 element_id(_) -> {error, no_element_id}.
 
-% @doc ...
+% @doc Recognize an element data size 
 element_data_size(<<16#FF, Rest/binary>>) -> {reserved, Rest};
 element_data_size(<<1:1, N:7, Rest/binary>>) -> {N, 1, Rest};
 element_data_size(<<1:2, N:14, Rest/binary >>) -> {N, 2, Rest};
@@ -214,7 +214,7 @@ ebml_type(16#284) -> {'DocTypeExtensionVersion', uinteger};
 ebml_type(16#3F) -> {'CRC-32', binary};
 ebml_type(16#6C) -> {'Void', binary};
 
-%% Webm ids stuff
+%% Webm ids types 
 ebml_type(16#8538067) -> {'Segment', master};
 ebml_type(16#B538667) -> {'SignatureSlot', master};
 ebml_type(16#3E8A) -> {'SignatureAlgo', uinteger};
