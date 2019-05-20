@@ -33,9 +33,9 @@
 }).
 
 -record(value, {
-   type = unknown   :: value_type(),                  % atom 
-   value = <<>>     :: binary() | number() | list(),  % data 
-   offset = 0       :: non_neg_integer()              % offset
+   type = unknown_type :: value_type(),                  % atom 
+   value = <<>>        :: binary() | number() | list(),  % data 
+   offset = 0          :: non_neg_integer()              % offset
 }).
 
 -record(state, {
@@ -63,7 +63,7 @@
                     | date
                     | string
                     | 'utf-8'
-                    | unknown.
+                    | unknown_type.
 
 
 -export_type([
@@ -431,7 +431,7 @@ ebml_type(16#484) -> {'TagDefault', 'uinteger'};
 ebml_type(16#487) -> {'TagString', 'utf-8'};
 ebml_type(16#485) -> {'TagBinary', 'binary'};
 
-ebml_type(Id) -> {Id, unknown}.
+ebml_type(Id) -> {Id, unknown_id}.
 
 
 %%
