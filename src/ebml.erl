@@ -132,13 +132,13 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data, data_size=
             Error;
         continue ->
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
-        {DataSize, Size, Rest} ->
+        {DataSize, ElementDataSize, Rest} ->
             Token = #element{name=ElementName, data_size=DataSize, offset=Offset},
             State1 = State#state{
                        in=ebml_value,
                        data= <<>>,
                        data_size=DataSize,
-                       offset=Offset+IdSize+Size},
+                       offset=Offset + IdSize + ElementDataSize},
             tokens(Rest, [Token | Acc], State1)
     end;
 
