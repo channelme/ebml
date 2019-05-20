@@ -115,14 +115,14 @@ tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
             Error;
         continue ->
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
-        {Id, Size, Rest} ->
+        {Id, IdSize, Rest} ->
             {ElementName, ElementType} = ebml_type(Id),
             State1 = State#state{
                        in=ebml_data_size,
                        id=ElementName,
                        type=ElementType,
                        data= <<>>,
-                       data_size=Size},
+                       data_size=IdSize},
             tokens(Rest, Acc, State1)
     end;
 
