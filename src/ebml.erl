@@ -24,7 +24,7 @@
 %% many other "EBML Elements", or both
 %%
 
--compile({no_auto_import,[element/2]}).
+-compile({no_auto_import, [element/2]}).
 
 -record(element, {
     name = undefined :: atom(),            % name of element 
@@ -33,7 +33,7 @@
 }).
 
 -record(value, {
-   type = undefined :: value_type(),                  % atom 
+   type = unknown   :: value_type(),                  % atom 
    value = <<>>     :: binary() | number() | list(),  % data 
    offset = 0       :: non_neg_integer()              % offset
 }).
@@ -148,14 +148,14 @@ tokens(Bin, Acc, #state{in=ebml_value, type=master}=State) ->
     tokens(Bin, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined});
 
 tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data, offset=Offset}=State) when size(Data) + size(Bin) >= Size ->
-    %% We have the data
+    %% The data is available.
     <<ValueData:Size/binary, Rest/binary>> = <<Data/binary, Bin/binary>>,
     Value = value(Type, ValueData),
     tokens(Rest, [Value|Acc], State#state{in=ebml_id,
                                           type=undefined,
                                           data_size=undefined,
                                           data= <<>>,
-                                          offset=Offset+Size});
+                                          offset=Offset + Size});
 
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
     {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
