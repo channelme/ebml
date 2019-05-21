@@ -34,8 +34,7 @@
 
 -record(value, {
    type = undefined :: value_type(),                  % atom 
-   value = <<>>     :: binary() | number() | list(),  % data 
-   offset = 0       :: non_neg_integer()              % offset
+   value = <<>>     :: binary() | number() | list()   % data 
 }).
 
 -record(state, {
@@ -122,7 +121,7 @@ tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
                        id=ElementName,
                        type=ElementType,
                        data= <<>>,
-                       data_size=Size},
+                       data_size=Size}, % The size of the id element.
             tokens(Rest, Acc, State1)
     end;
 
@@ -132,13 +131,13 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data, data_size=
             Error;
         continue ->
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
-        {DataSize, Size, Rest} ->
+        {DataSize, ValueSize, Rest} ->
             Token = #element{name=ElementName, data_size=DataSize, offset=Offset},
             State1 = State#state{
                        in=ebml_value,
                        data= <<>>,
                        data_size=DataSize,
-                       offset=Offset+IdSize+Size},
+                       offset=Offset + IdSize + ValueSize},
             tokens(Rest, [Token | Acc], State1)
     end;
 
@@ -152,6 +151,7 @@ tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data, off
     <<ValueData:Size/binary, Rest/binary>> = <<Data/binary, Bin/binary>>,
     Value = value(Type, ValueData),
     tokens(Rest, [Value|Acc], State#state{in=ebml_id,
+                                          id=undefined,
                                           type=undefined,
                                           data_size=undefined,
                                           data= <<>>,
@@ -224,6 +224,8 @@ ebml_type(16#3EB5) -> {'Signature', binary};
 ebml_type(16#3E5B) -> {'SignatureElements', master};
 ebml_type(16#3E7B) -> {'SignatureElementList', master};
 ebml_type(16#2532) -> {'SignedElement', binary};
+
+ebml_type(16#13C0) -> {'AlphaMode', uinteger};
 
 ebml_type(16#14D9B74) -> {'SeekHeader', master};
 ebml_type(16#DBB) -> {'SeekPoint', master};
