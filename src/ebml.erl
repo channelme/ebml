@@ -24,7 +24,7 @@
 %% many other "EBML Elements", or both
 %%
 
--compile({no_auto_import,[element/2]}).
+-compile({no_auto_import, [element/2]}).
 
 -record(element, {
     name = undefined :: atom(),            % name of element 
@@ -40,7 +40,7 @@
 -record(state, {
     in = ebml_id, % ebml_type, ebml_data_size, ebml_value
 
-    %% Token in opbouw.
+    %% Token being build.
     id = undefined,
     type = undefined,
     data_size = undefined,
@@ -62,7 +62,7 @@
                     | date
                     | string
                     | 'utf-8'
-                    | unknown.
+                    | unknown_type.
 
 
 -export_type([
@@ -114,14 +114,14 @@ tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
             Error;
         continue ->
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
-        {Id, Size, Rest} ->
+        {Id, IdSize, Rest} ->
             {ElementName, ElementType} = ebml_type(Id),
             State1 = State#state{
                        in=ebml_data_size,
                        id=ElementName,
                        type=ElementType,
                        data= <<>>,
-                       data_size=Size}, % The size of the id element.
+                       data_size=IdSize},
             tokens(Rest, Acc, State1)
     end;
 
@@ -131,13 +131,13 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data, data_size=
             Error;
         continue ->
             {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
-        {DataSize, ValueSize, Rest} ->
+        {DataSize, ElementDataSize, Rest} ->
             Token = #element{name=ElementName, data_size=DataSize, offset=Offset},
             State1 = State#state{
                        in=ebml_value,
                        data= <<>>,
                        data_size=DataSize,
-                       offset=Offset + IdSize + ValueSize},
+                       offset=Offset + IdSize + ElementDataSize},
             tokens(Rest, [Token | Acc], State1)
     end;
 
@@ -147,7 +147,7 @@ tokens(Bin, Acc, #state{in=ebml_value, type=master}=State) ->
     tokens(Bin, [Value|Acc], State#state{in=ebml_id, type=undefined, data_size=undefined});
 
 tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data, offset=Offset}=State) when size(Data) + size(Bin) >= Size ->
-    %% We have the data
+    %% The data is available.
     <<ValueData:Size/binary, Rest/binary>> = <<Data/binary, Bin/binary>>,
     Value = value(Type, ValueData),
     tokens(Rest, [Value|Acc], State#state{in=ebml_id,
@@ -155,7 +155,7 @@ tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data, off
                                           type=undefined,
                                           data_size=undefined,
                                           data= <<>>,
-                                          offset=Offset+Size});
+                                          offset=Offset + Size});
 
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
     {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
@@ -167,7 +167,7 @@ value(float, <<Float/float>>) ->
 value(Type, Bin) ->
     #value{type=Type, value=Bin}.
 
-% @doc ...
+% @doc Recognize an element id.
 element_id(<<16#FF, _Rest/binary>>) -> {error, no_id};
 element_id(<<1:1, N:7, Rest/binary>>) -> {N, 1, Rest};
 element_id(<<1:2, N:14, Rest/binary>>) -> {N, 2, Rest};
@@ -179,7 +179,7 @@ element_id(<<1:3, _:5, Rest/binary>>) when size(Rest) =< 1 -> continue;
 element_id(<<1:4, _:4, Rest/binary>>) when size(Rest) =< 2 -> continue;
 element_id(_) -> {error, no_element_id}.
 
-% @doc ...
+% @doc Recognize an element data size 
 element_data_size(<<16#FF, Rest/binary>>) -> {reserved, Rest};
 element_data_size(<<1:1, N:7, Rest/binary>>) -> {N, 1, Rest};
 element_data_size(<<1:2, N:14, Rest/binary >>) -> {N, 2, Rest};
@@ -214,7 +214,7 @@ ebml_type(16#284) -> {'DocTypeExtensionVersion', uinteger};
 ebml_type(16#3F) -> {'CRC-32', binary};
 ebml_type(16#6C) -> {'Void', binary};
 
-%% Webm ids stuff
+%% Webm ids types 
 ebml_type(16#8538067) -> {'Segment', master};
 ebml_type(16#B538667) -> {'SignatureSlot', master};
 ebml_type(16#3E8A) -> {'SignatureAlgo', uinteger};
@@ -433,7 +433,7 @@ ebml_type(16#484) -> {'TagDefault', 'uinteger'};
 ebml_type(16#487) -> {'TagString', 'utf-8'};
 ebml_type(16#485) -> {'TagBinary', 'binary'};
 
-ebml_type(Id) -> {Id, unknown}.
+ebml_type(Id) -> {Id, unknown_id}.
 
 
 %%
