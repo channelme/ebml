@@ -6,13 +6,13 @@
 -include_lib("eunit/include/eunit.hrl").
 
 tokens_test() ->
-    ?assertMatch({[], _}, ebml:tokens(<<>>)),
+    ?assertMatch({ok, [], _}, ebml:tokens(<<>>)),
     ok.
 
 token_test_webm_test() ->
     {ok, Data} = file:read_file("test/data/test.webm"),
 
-    {Tokens, State} = ebml:tokens(Data),
+    {ok, Tokens, State} = ebml:tokens(Data),
     ?assertEqual(1212, length(Tokens)),
 
     %% Check if there is no leftover data.
@@ -28,8 +28,8 @@ token_test_split_webm_test() ->
 
     <<D1:10000/binary, D2/binary>> = Data,
 
-    {Tokens1, S1} = ebml:tokens(D1),
-    {Tokens2, S2} = ebml:tokens(D2, S1),
+    {ok, Tokens1, S1} = ebml:tokens(D1),
+    {ok, Tokens2, S2} = ebml:tokens(D2, S1),
 
     ?assertEqual(1212, length(Tokens1 ++ Tokens2)),
 
@@ -46,11 +46,11 @@ token_test_split_and_get_data_webm_test() ->
 
     <<D1:10000/binary, D2/binary>> = Data,
 
-    {Tokens1, S1} = ebml:tokens(D1),
+    {ok, Tokens1, S1} = ebml:tokens(D1),
     {LeftOver, S2} = ebml:get_data(S1),
-    {Tokens2, S3} = ebml:tokens(<<LeftOver/binary, D2/binary>>, S2),
+    {ok, Tokens2, S3} = ebml:tokens(<<LeftOver/binary, D2/binary>>, S2),
 
-    ?assertEqual(1212, length(Tokens1 ++ Tokens2)),
+   ?assertEqual(1212, length(Tokens1 ++ Tokens2)),
 
     %% Check if there is no leftover data.
     ?assertEqual(<<>>, ebml:data(S2)), 

@@ -76,12 +76,12 @@ new() ->
     #state{}.
 
 % @doc  
--spec tokens(binary()) -> {list(token()), parser_state()}.
+-spec tokens(binary()) -> {ok, list(token()), parser_state()} | {error, any()}.
 tokens(Bin) ->
     tokens(Bin, new()).
 
 % @doc Tokenize the binary. Returns
--spec tokens(binary(), parser_state()) -> {list(token()), parser_state()}.
+-spec tokens(binary(), parser_state()) -> {ok, list(token()), parser_state()} | {error, any()}.
 tokens(Bin, State) ->
     tokens(Bin, [], State). 
 
@@ -106,14 +106,14 @@ offset(#state{offset=Offset}) ->
 %%
 
 tokens(<<>>, Acc, State) ->
-    {lists:reverse(Acc), State};
+    {ok, lists:reverse(Acc), State};
 
 tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
     case element_id(<<Data/binary, Bin/binary>>) of
         {error, _}=Error ->
             Error;
         continue ->
-            {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
+            {ok, lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
         {Id, IdSize, Rest} ->
             {ElementName, ElementType} = ebml_type(Id),
             State1 = State#state{
@@ -130,7 +130,7 @@ tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data, data_size=
         {error, _}=Error ->
             Error;
         continue ->
-            {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
+            {ok, lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
         {DataSize, ElementDataSize, Rest} ->
             Token = #element{name=ElementName, data_size=DataSize, offset=Offset},
             State1 = State#state{
@@ -158,7 +158,7 @@ tokens(Bin, Acc, #state{in=ebml_value, type=Type, data_size=Size, data=Data, off
                                           offset=Offset + Size});
 
 tokens(Bin, Acc, #state{in=ebml_value, data=Data}=State) ->
-    {lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
+    {ok, lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}}.
 
 value(uinteger, Bin) ->
     #value{type=uinteger, value=binary:decode_unsigned(Bin)};
@@ -453,39 +453,39 @@ element_id_test() ->
     ok.
 
 simple_token_ebml_test() ->
-    ?assertMatch({[], #state{in=ebml_id, data= <<>>}}, tokens(<<>>)),
-    ?assertMatch({[], #state{in=ebml_id, data= <<26>>}}, tokens(<<26>>)),
-    ?assertMatch({[], #state{in=ebml_id, data= <<26, 69>>}}, tokens(<<26, 69>>)),
-    ?assertMatch({[], #state{in=ebml_id, data= <<26, 69, 223>>}}, tokens(<<26, 69, 223>>)),
-    ?assertMatch({[], #state{in=ebml_data_size,
+    ?assertMatch({ok, [], #state{in=ebml_id, data= <<>>}}, tokens(<<>>)),
+    ?assertMatch({ok, [], #state{in=ebml_id, data= <<26>>}}, tokens(<<26>>)),
+    ?assertMatch({ok, [], #state{in=ebml_id, data= <<26, 69>>}}, tokens(<<26, 69>>)),
+    ?assertMatch({ok, [], #state{in=ebml_id, data= <<26, 69, 223>>}}, tokens(<<26, 69, 223>>)),
+    ?assertMatch({ok, [], #state{in=ebml_data_size,
                              id='EBML',
                              type=master,
                              data= <<>>}}, tokens(<<26, 69, 223, 163>>)),
 
-    ?assertMatch({[], #state{in=ebml_data_size,
+    ?assertMatch({ok, [], #state{in=ebml_data_size,
                              id='EBML',
                              type=master,
                              data= <<>>}}, tokens(<<26, 69, 223, 163>>)),
 
-    ?assertMatch({[], #state{in=ebml_data_size,
+    ?assertMatch({ok, [], #state{in=ebml_data_size,
                              id='EBML',
                              type=master,
                              data= <<1>>}},
                  tokens(<<26,69,223,163,1>>)),
 
-    ?assertMatch({[], #state{in=ebml_data_size,
+    ?assertMatch({ok, [], #state{in=ebml_data_size,
                              id='EBML',
                              type=master,
                              data= <<1, 0>>}},
                  tokens(<<26,69,223,163,1,0>>)),
 
-    ?assertMatch({[], #state{in=ebml_data_size,
+    ?assertMatch({ok, [], #state{in=ebml_data_size,
                              id='EBML',
                              type=master,
                              data= <<1,0,0>>}},
                  tokens(<<26,69,223,163,1,0,0>>)),
 
-    ?assertMatch({[#element{name='EBML', data_size=31}], #state{in=ebml_value,
+    ?assertMatch({ok, [#element{name='EBML', data_size=31}], #state{in=ebml_value,
                              id='EBML',
                              type=master,
                              data_size=31,
