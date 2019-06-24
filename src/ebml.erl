@@ -108,10 +108,10 @@ offset(#state{offset=Offset}) ->
 tokens(<<>>, Acc, State) ->
     {ok, lists:reverse(Acc), State};
 
-tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
+tokens(Bin, Acc, #state{in=ebml_id, data=Data, offset=Offset} = State) ->
     case element_id(<<Data/binary, Bin/binary>>) of
-        {error, _}=Error ->
-            Error;
+        {error, _} ->
+            {error, {no_element_id, [{offset, Offset}]}};
         continue ->
             {ok, lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
         {Id, IdSize, Rest} ->
@@ -127,8 +127,8 @@ tokens(Bin, Acc, #state{in=ebml_id, data=Data} = State) ->
 
 tokens(Bin, Acc, #state{in=ebml_data_size, id=ElementName, data=Data, data_size=IdSize, offset=Offset} = State) ->
     case element_data_size(<<Data/binary, Bin/binary>>) of
-        {error, _}=Error ->
-            Error;
+        {error, _} ->
+            {error, {no_data_size, [{id, ElementName}, {offset, Offset}]}};
         continue ->
             {ok, lists:reverse(Acc), State#state{data= <<Data/binary, Bin/binary>>}};
         {DataSize, ElementDataSize, Rest} ->
@@ -180,6 +180,7 @@ element_id(<<1:4, _:4, Rest/binary>>) when size(Rest) =< 2 -> continue;
 element_id(_) -> {error, no_element_id}.
 
 % @doc Recognize an element data size 
+element_data_size(<<>>) -> continue;
 element_data_size(<<16#FF, Rest/binary>>) -> {reserved, Rest};
 element_data_size(<<1:1, N:7, Rest/binary>>) -> {N, 1, Rest};
 element_data_size(<<1:2, N:14, Rest/binary >>) -> {N, 2, Rest};
@@ -189,7 +190,6 @@ element_data_size(<<1:5, N:35, Rest/binary>>) -> {N, 5, Rest};
 element_data_size(<<1:6, N:42, Rest/binary>>) -> {N, 6, Rest};
 element_data_size(<<1:7, N:49, Rest/binary>>) -> {N, 7, Rest};
 element_data_size(<<1:8, N:56, Rest/binary>>) -> {N, 8, Rest};
-element_data_size(<<>>) -> continue;
 element_data_size(<<1:2, _:6, Rest/binary>>) when size(Rest) =:= 0 -> continue;
 element_data_size(<<1:3, _:5, Rest/binary>>) when size(Rest) =< 1 -> continue;
 element_data_size(<<1:4, _:4, Rest/binary>>) when size(Rest) =< 2 -> continue;
@@ -197,7 +197,7 @@ element_data_size(<<1:5, _:3, Rest/binary>>) when size(Rest) =< 3 -> continue;
 element_data_size(<<1:6, _:2, Rest/binary>>) when size(Rest) =< 4 -> continue;
 element_data_size(<<1:7, _:1, Rest/binary>>) when size(Rest) =< 5 -> continue;
 element_data_size(<<1:8, Rest/binary>>) when size(Rest) =< 6 -> continue;
-element_data_size(_) -> {error, no_data_size}.
+element_data_size(<<_/binary>>) -> {error, no_data_size}.
 
 % @doc Basic ebml types.
 ebml_type(16#A45DFA3) -> {'EBML', master};
