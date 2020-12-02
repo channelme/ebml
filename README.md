@@ -1,5 +1,6 @@
 # ebml
-Continuation based parser for ebml (webm) data.
+
+Erlang Continuation based parser for ebml (webm) data.
 
 See:
 
